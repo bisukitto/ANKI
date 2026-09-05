@@ -36,7 +36,9 @@ function getGeminiClient(): GoogleGenAI | null {
 }
 
 // Storage for Cloud Sync
-const DATA_DIR = path.join(process.cwd(), '.data');
+const DATA_DIR = process.env.VERCEL
+  ? path.join('/tmp', '.data')
+  : path.join(process.cwd(), '.data');
 const SYNC_FILE = path.join(DATA_DIR, 'cloud-sync-store.json');
 
 function ensureDataDir() {
@@ -441,4 +443,8 @@ async function startServer() {
   });
 }
 
-startServer();
+if (!process.env.VERCEL) {
+  startServer();
+}
+
+export default app;
