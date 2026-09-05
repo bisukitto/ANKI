@@ -1,0 +1,6 @@
+{
+  "name": "AnkiSync 智慧閃卡",
+  "description": "支援自動字典抓取、SM-2 間隔重複演算法、離線即時編輯與雲端跨裝置同步的專業記憶卡片系統。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
