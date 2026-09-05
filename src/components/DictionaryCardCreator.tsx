@@ -79,23 +79,99 @@ export const DictionaryCardCreator: React.FC<DictionaryCardCreatorProps> = ({
     setResult(null);
     setIsSavedToast(false);
 
+    let data: DictionaryLookupResult | null = null;
+    let fallbackNotice = '';
+
     try {
-      const res = await fetch('/api/dictionary/lookup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query }),
-      });
+      // 1. Try server API first
+      try {
+        const res = await fetch('/api/dictionary/lookup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query }),
+        });
 
-      if (!res.ok) {
-        throw new Error(`伺服器查詢失敗 (${res.status})`);
+        if (res.ok) {
+          const response = await res.json();
+          if (response.success && response.data) {
+            data = response.data;
+          }
+        } else {
+          console.warn(`Server lookup returned status ${res.status}`);
+          if (res.status === 500) {
+            fallbackNotice = '（伺服器回應 500，若使用 Vercel 請確認已設定 GEMINI_API_KEY，已自動啟動瀏覽器備援查詢）';
+          }
+        }
+      } catch (serverErr) {
+        console.warn('Server lookup fetch failed, switching to client fallback:', serverErr);
       }
 
-      const response = await res.json();
-      if (!response.success || !response.data) {
-        throw new Error('未能在字典中找到相應資料');
+      // 2. If server failed or returned 500, try client-side public dictionary directly
+      if (!data) {
+        try {
+          const freeRes = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(query.trim())}`);
+          if (freeRes.ok) {
+            const list = await freeRes.json();
+            if (Array.isArray(list) && list.length > 0) {
+              const entry = list[0];
+              const phonetic = entry.phonetic || entry.phonetics?.find((p: any) => p.text)?.text || '';
+              const audioUrl = entry.phonetics?.find((p: any) => p.audio && p.audio.length > 0)?.audio || '';
+
+              const definitions: any[] = [];
+              let mainPos = '';
+              if (Array.isArray(entry.meanings)) {
+                for (const m of entry.meanings) {
+                  if (!mainPos) mainPos = m.partOfSpeech || '';
+                  for (const d of m.definitions || []) {
+                    definitions.push({
+                      partOfSpeech: m.partOfSpeech || '',
+                      definitionEn: d.definition || '',
+                      definitionZh: '',
+                      examples: d.example ? [{ sentence: d.example, translation: '' }] : [],
+                    });
+                  }
+                }
+              }
+
+              data = {
+                word: entry.word || query,
+                phonetic,
+                audioUrl,
+                partOfSpeech: mainPos,
+                primaryMeaning: definitions[0]?.definitionEn || query,
+                definitions: definitions.slice(0, 4),
+                synonyms: entry.meanings?.flatMap((m: any) => m.synonyms || []).slice(0, 6) || [],
+                collocations: [],
+                memoryTip: fallbackNotice || '已透過備援字典載入英英定義與發音。',
+              };
+            }
+          }
+        } catch (clientDictErr) {
+          console.warn('Client-side dictionary lookup failed:', clientDictErr);
+        }
       }
 
-      const data: DictionaryLookupResult = response.data;
+      // 3. Fallback to basic structure so user is never blocked
+      if (!data) {
+        data = {
+          word: query.trim(),
+          phonetic: '',
+          partOfSpeech: '',
+          primaryMeaning: '',
+          definitions: [
+            {
+              partOfSpeech: '',
+              definitionEn: '',
+              definitionZh: '',
+              examples: [],
+            },
+          ],
+          synonyms: [],
+          collocations: [],
+          memoryTip: fallbackNotice || '已為您開啟卡片編輯，請直接填入中文釋義與例句。',
+        };
+      }
+
       setResult(data);
 
       // Pre-fill editable fields
